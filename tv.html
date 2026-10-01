@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>MPD Diagnostic Player</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.16.0/shaka-player.compiled.min.js"></script>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    color: #fff;
+    font-family: Arial, sans-serif;
+}
+
+#video {
+    width: 100%;
+    height: 70vh;
+    background: #000;
+    display: block;
+}
+
+#status {
+    padding: 15px;
+    background: #111;
+    color: #00ff88;
+    font-size: 14px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+#error {
+    padding: 15px;
+    background: #200;
+    color: #ff7777;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+#response {
+    padding: 15px;
+    background: #151515;
+    color: #bbb;
+    font-size: 12px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 300px;
+    overflow: auto;
+}
+</style>
+</head>
+
+<body>
+
+<video
+    id="video"
+    controls
+    playsinline>
+</video>
+
+<div id="status">
+Starting...
+</div>
+
+<div id="error"></div>
+
+<div id="response"></div>
+
+
+<script>
+
+/*
+====================================================
+STREAM
+====================================================
+*/
+
+const MPD_URL =
+"https://d1g8wgjurz8via.cloudfront.net/bpk-tv/Zeecinemalu/default/main.mpd?";
+
+
+const KEY_ID =
+"d27bc072600d431faa7d0c8441a5fb43";
+
+
+const KEY_VALUE =
+"3b61f64edc79497d9da31d612a88f8ea";
+
+
+/*
+====================================================
+UI
+====================================================
+*/
+
+function setStatus(message) {
+
+    document.getElementById(
+        "status"
+    ).textContent = message;
+}
+
+
+function setError(message) {
+
+    document.getElementById(
+        "error"
+    ).textContent = message;
+}
+
+
+function setResponse(message) {
+
+    document.getElementById(
+        "response"
+    ).textContent = message;
+}
+
+
+/*
+====================================================
+MAIN
+====================================================
+*/
+
+async function startPlayer() {
+
+    try {
+
+        setStatus(
+            "1. Checking browser..."
+        );
+
+
+        /*
+        --------------------------------------------
+        SHAKA SUPPORT
+        --------------------------------------------
+        */
+
+        shaka.polyfill.installAll();
+
+
+        if (!shaka.Player.isBrowserSupported()) {
+
+            setError(
+                "Browser does not support Shaka Player."
+            );
+
+            return;
+        }
+
+
+        setStatus(
+            "2. Browser supported.\n" +
+            "3. Requesting MPD..."
+        );
+
+
+        /*
+        --------------------------------------------
+        DIRECT MPD REQUEST
+        --------------------------------------------
+        */
+
+        const response =
+            await fetch(MPD_URL);
+
+
+        console.log(
+            "MPD HTTP STATUS:",
+            response.status
+        );
+
+
+        console.log(
+            "MPD CONTENT TYPE:",
+            response.headers.get(
+                "content-type"
+            )
+        );
+
+
+        /*
+        --------------------------------------------
+        READ RESPONSE
+        --------------------------------------------
+        */
+
+        const mpdText =
+            await response.text();
+
+
+        /*
+        Show diagnostic information
+        */
+
+        setResponse(
+            "HTTP STATUS:\n" +
+            response.status +
+
+            "\n\nCONTENT-TYPE:\n" +
+            response.headers.get(
+                "content-type"
+            ) +
+
+            "\n\nMPD RESPONSE BEGINNING:\n\n" +
+
+            mpdText.substring(0, 2000)
+        );
+
+
+        /*
+        --------------------------------------------
+        HTTP CHECK
+        --------------------------------------------
+        */
+
+        if (!response.ok) {
+
+            setError(
+                "MPD HTTP ERROR: " +
+                response.status
+            );
+
+            return;
+        }
+
+
+        /*
+        --------------------------------------------
+        BASIC MPD CHECK
+        --------------------------------------------
+        */
+
+        const trimmed =
+            mpdText.trim();
+
+
+        if (
+            !trimmed.includes("<MPD") &&
+            !trimmed.includes(":MPD")
+        ) {
+
+            setError(
+                "HTTP 200 వచ్చింది, కానీ response " +
+                "DASH MPD XMLలా కనిపించడం లేదు.\n\n" +
+                "Response beginning పై కనిపిస్తుంది."
+            );
+
+            return;
+        }
+
+
+        setStatus(
+            "4. MPD response looks like DASH XML.\n" +
+            "5. Starting Shaka..."
+        );
+
+
+        /*
+        --------------------------------------------
+        VIDEO
+        --------------------------------------------
+        */
+
+        const video =
+            document.getElementById(
+                "video"
+            );
+
+
+        /*
+        --------------------------------------------
+        SHAKA
+        --------------------------------------------
+        */
+
+        const player =
+            new shaka.Player();
+
+
+        /*
+        New Shaka API:
+        attach media element
+        */
+
+        await player.attach(video);
+
+
+        /*
+        --------------------------------------------
+        CLEARKEY
+        --------------------------------------------
+        */
+
+        player.configure({
+
+            drm: {
+
+                clearKeys: {
+
+                    [KEY_ID]:
+                        KEY_VALUE
+
+                }
+
+            }
+
+        });
+
+
+        /*
+        --------------------------------------------
+        SHAKA ERROR
+        --------------------------------------------
+        */
+
+        player.addEventListener(
+            "error",
+            function(event) {
+
+                const error =
+                    event.detail;
+
+
+                console.error(
+                    "SHAKA ERROR:",
+                    error
+                );
+
+
+                setError(
+                    "SHAKA ERROR\n\n" +
+
+                    "Code: " +
+                    error.code +
+
+                    "\nCategory: " +
+                    error.category +
+
+                    "\nSeverity: " +
+                    error.severity +
+
+                    "\nData: " +
+                    JSON.stringify(
+                        error.data
+                    )
+                );
+
+            }
+        );
+
+
+        /*
+        --------------------------------------------
+        LOAD MPD
+        --------------------------------------------
+        */
+
+        setStatus(
+            "6. Loading MPD through Shaka..."
+        );
+
+
+        await player.load(
+            MPD_URL
+        );
+
+
+        setStatus(
+            "SUCCESS\n\n" +
+            "MPD loaded successfully.\n" +
+            "Press Play."
+        );
+
+
+        /*
+        --------------------------------------------
+        AUTOPLAY
+        --------------------------------------------
+        */
+
+        try {
+
+            await video.play();
+
+        } catch (e) {
+
+            console.log(
+                "Autoplay blocked. Press Play."
+            );
+
+        }
+
+    }
+
+    catch (error) {
+
+        console.error(
+            "PLAYER ERROR:",
+            error
+        );
+
+
+        setError(
+            "PLAYER ERROR\n\n" +
+
+            "Message: " +
+            (error.message || error) +
+
+            "\n\nFull error:\n" +
+            JSON.stringify(
+                error,
+                Object.getOwnPropertyNames(error),
+                2
+            )
+        );
+
+    }
+
+}
+
+
+/*
+====================================================
+START
+====================================================
+*/
+
+document.addEventListener(
+    "DOMContentLoaded",
+    startPlayer
+);
+
+</script>
+
+</body>
+</html>
